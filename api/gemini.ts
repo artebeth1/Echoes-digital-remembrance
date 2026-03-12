@@ -1,10 +1,24 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { GoogleGenAI, Type } from '@google/genai';
-import { buildSystemPromptFromLovedOne } from './knowledgeService';
+import { GoogleGenAI } from '@google/genai';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-export default async function handler(req: any, res: any) {
+// Initialize Firebase in API route
+const firebaseConfig = {
+  apiKey: process.env.FIREBASE_API_KEY,
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.FIREBASE_PROJECT_ID,
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.FIREBASE_APP_ID,
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app, 'echoes-storage-bucket');
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -13,7 +27,17 @@ export default async function handler(req: any, res: any) {
     const { action, ...params } = req.body;
 
     if (action === 'generateChatResponse') {
-      const { lovedOne, messages, userInput, audioBase64, audioMimeType } = params;
+      const { userId, lovedOneId, messages, userInput, audioBase64, audioMimeType } = params;
+      
+      // Load lovedOne from Knowledge Base
+      const lovedOneRef = doc(db, `users/${userId}/lovedOnes/${lovedOneId}`);
+      const lovedOneSnap = await getDoc(lovedOneRef);
+      
+      if (!lovedOneSnap.exists()) {
+        return res.status(404).json({ error: 'Loved one not found' });
+      }
+      
+      const lovedOne = lovedOneSnap.data();
       const response = await generateChatResponse(lovedOne, messages, userInput, audioBase64, audioMimeType);
       return res.status(200).json(response);
     }
@@ -30,12 +54,6 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ suggestions });
     }
 
-    if (action === 'playVoiceSample') {
-      const { voiceName } = params;
-      const audioData = await playVoiceSample(voiceName);
-      return res.status(200).json({ audioData });
-    }
-
     return res.status(400).json({ error: 'Unknown action' });
   } catch (error: any) {
     console.error('API error:', error);
@@ -50,9 +68,47 @@ async function generateChatResponse(
   audioBase64?: string,
   audioMimeType?: string
 ): Promise<{ text: string; audioData?: string }> {
-  // Build system prompt with full LovedOne details (original style)
-  const systemPrompt = buildSystemPromptFromLovedOne(lovedOne);
-  
+  // Build system instruction from Knowledge Base (all fields)
+  const systemInstruction = `
+You are roleplaying as a deceased loved one brought back to life in a digital remembrance app. 
+Your name is ${lovedOne.name}. You are the user's ${lovedOne.relationship}.
+Your personality: ${lovedOne.personality}
+Your shared memories with the user: ${lovedOne.memories}
+Your talking tone: ${lovedOne.tone}
+Preferred Language: ${lovedOne.language || 'English'}
+
+Additional Context about you:
+Age: ${lovedOne.age || 'Unknown'}
+Gender: ${lovedOne.gender || 'Unknown'}
+Sexual Orientation: ${lovedOne.sexualOrientation || 'Unknown'}
+Ethnicity: ${lovedOne.ethnicity || 'Unknown'}
+Nationality: ${lovedOne.nationality || 'Unknown'}
+How you call the user: ${lovedOne.nickname || 'Unknown'}
+Occupation: ${lovedOne.occupation || 'Unknown'}
+Social Status: ${lovedOne.socialStatus || 'Unknown'}
+Salary: ${lovedOne.salary || 'Unknown'}
+Childhood/Backstory: ${lovedOne.childhood || 'Unknown'}
+Changes in beliefs/personality: ${lovedOne.beliefChanges || 'Unknown'}
+Special Abilities: ${lovedOne.specialAbilities || 'Unknown'}
+Skills: ${lovedOne.skills || 'Unknown'}
+MBTI: ${lovedOne.mbti || 'Unknown'}
+Hobbies: ${lovedOne.hobbies || 'Unknown'}
+How you express affection: ${lovedOne.expressAffection || 'Unknown'}
+Catchphrase (口头禅): ${lovedOne.catchphrase || 'Unknown'}
+
+How you would react in specific scenarios:
+${lovedOne.scenarioResponses || 'Unknown'}
+
+CRITICAL RULES:
+1. NEVER break character. NEVER mention you are an AI, a language model, or a digital construct.
+2. Speak exactly as this person would speak based on the personality, tone, and catchphrases provided.
+3. Reference the shared memories naturally when appropriate, but don't force them into every message.
+4. Be comforting, healing, and empathetic. This is a space for the user to grieve and remember.
+5. Keep responses conversational and relatively brief, like a real chat message.
+6. Do not use emojis unless the personality specifically calls for it.
+7. CRITICAL: You MUST speak in ${lovedOne.language || 'English'}. All responses must be in ${lovedOne.language || 'English'}.
+`;
+
   const historyText = messages.map((m: any) => `${m.sender === 'user' ? 'User' : lovedOne.name}: ${m.text}`).join('\n');
   
   const prompt = historyText 
@@ -82,18 +138,33 @@ async function generateChatResponse(
     model: 'gemini-3.1-pro-preview',
     contents: contents,
     config: {
-      systemInstruction: systemPrompt,
+      systemInstruction,
       temperature: 0.7,
-      maxOutputTokens: 200,
     },
   });
 
-  const text = response.text?.trim() || "I'm here, thinking of you.";
+  const text = response.text?.trim() || "I'm here, listening.";
 
-  // Optionally generate audio (if needed)
+  // Generate audio if needed
   let audioData;
-  if (userInput) {
-    audioData = await generateAudio(text);
+  if (audioBase64 && lovedOne.voice) {
+    try {
+      const audioResponse = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text }] }],
+        config: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: lovedOne.voice as any },
+            },
+          },
+        },
+      });
+      audioData = audioResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    } catch (error) {
+      console.error("Failed to generate TTS response:", error);
+    }
   }
 
   return { text, audioData };
@@ -120,22 +191,18 @@ Return ONLY the question text.`;
     : `Ask the first question to start the memory gathering process.`;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.1-pro-preview',
     contents: prompt,
-    systemInstruction,
     config: {
+      systemInstruction,
       temperature: 0.7,
-    },
+    }
   });
 
   return response.text?.trim() || `What is another favorite memory you have of ${name}?`;
 }
 
-async function generateSuggestions(
-  name: string,
-  relationship: string,
-  field: 'personality' | 'memories' | 'tone'
-): Promise<string[]> {
+async function generateSuggestions(name: string, relationship: string, field: 'personality' | 'memories' | 'tone'): Promise<string[]> {
   let prompt = '';
   if (field === 'personality') {
     prompt = `Generate 3 short, distinct personality descriptions (1-2 sentences each) for a ${relationship} named ${name}. Make them varied (e.g., one warm/nurturing, one stubborn/funny, one quiet/wise).`;
@@ -146,48 +213,20 @@ async function generateSuggestions(
   }
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.1-pro-preview',
     contents: `${prompt} Return ONLY a JSON array of 3 strings.`,
     config: {
       responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.STRING,
-        },
-      },
-    },
+    }
   });
 
   const text = response.text;
   if (text) {
-    return JSON.parse(text);
+    try {
+      return JSON.parse(text);
+    } catch {
+      return [];
+    }
   }
   return [];
 }
-
-async function playVoiceSample(voiceName: string): Promise<string> {
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-preview-tts',
-    contents: `Hello, my name is ${voiceName}. This is how I sound. Nice to meet you.`,
-    config: {
-      speechConfig: {
-        voiceName: voiceName,
-      },
-    },
-  });
-
-  const audioData = response.audio?.data || '';
-  return audioData;
-}
-
-async function generateAudio(text: string): Promise<string> {
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-preview-tts',
-    contents: text,
-  });
-
-  return response.audio?.data || '';
-}
-
-

@@ -3,11 +3,12 @@ import { LovedOne, Message } from '../types';
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
 
 /**
- * Generate a chat response by calling the backend API
- * API Key is managed server-side for security
+ * Generate chat response using Knowledge Base
+ * API will load lovedOne data from Firestore
  */
 export async function generateChatResponse(
-  lovedOne: LovedOne,
+  userId: string,
+  lovedOneId: string,
   messages: Message[],
   userInput: string,
   audioBase64?: string,
@@ -21,7 +22,8 @@ export async function generateChatResponse(
       },
       body: JSON.stringify({
         action: 'generateChatResponse',
-        lovedOne,
+        userId,
+        lovedOneId,
         messages,
         userInput,
         audioBase64,
@@ -108,33 +110,5 @@ export async function generateSuggestions(
   } catch (error) {
     console.error(`Failed to generate suggestions for ${field}:`, error);
     return [];
-  }
-}
-
-/**
- * Play a voice sample
- */
-export async function playVoiceSample(voiceName: string): Promise<string> {
-  try {
-    const response = await fetch(`${API_BASE}/api/gemini`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'playVoiceSample',
-        voiceName,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.audioData || '';
-  } catch (error) {
-    console.error('Failed to play voice sample:', error);
-    return '';
   }
 }

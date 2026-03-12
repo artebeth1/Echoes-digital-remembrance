@@ -201,7 +201,8 @@ export default function Chat() {
       });
 
       const { text: aiResponseText, audioData: aiAudioData } = await generateChatResponse(
-        lovedOne, 
+        currentUser.uid,
+        id,
         messages, 
         t('chat.voice_message'),
         base64Audio,
@@ -245,8 +246,8 @@ export default function Chat() {
         createdAt: serverTimestamp()
       });
 
-      // Get AI response
-      const { text: aiResponseText } = await generateChatResponse(lovedOne, messages, userMessageText);
+      // Get AI response from Knowledge Base
+      const { text: aiResponseText } = await generateChatResponse(currentUser.uid, id, messages, userMessageText);
 
       const aiMsgId = crypto.randomUUID();
       const aiMsgRef = doc(db, `users/${currentUser.uid}/lovedOnes/${id}/messages`, aiMsgId);
