@@ -112,3 +112,29 @@ export async function generateSuggestions(
     return [];
   }
 }
+
+/**
+ * Play a voice sample
+ */
+export async function playVoiceSample(voiceName: string): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE}/api/gemini`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'playVoiceSample',
+        voiceName,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+
+    // Voice playback handled by CreateLovedOne component
+  } catch (error) {
+    console.error('Failed to play voice sample:', error);
+  }
+}
