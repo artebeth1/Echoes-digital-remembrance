@@ -12,8 +12,8 @@ export default async function handler(req: any, res: any) {
     const { action, ...params } = req.body;
 
     if (action === 'generateChatResponse') {
-      const { lovedOne, messages, userInput, audioBase64, audioMimeType } = params;
-      const response = await generateChatResponse(lovedOne, messages, userInput, audioBase64, audioMimeType);
+      const { lovedOne, messages, userInput, knowledge, audioBase64, audioMimeType } = params;
+      const response = await generateChatResponse(lovedOne, messages, userInput, knowledge, audioBase64, audioMimeType);
       return res.status(200).json(response);
     }
 
@@ -46,10 +46,12 @@ async function generateChatResponse(
   lovedOne: any,
   messages: any[],
   userInput: string,
+  knowledge: string = '',
   audioBase64?: string,
   audioMimeType?: string
 ): Promise<{ text: string; audioData?: string }> {
-  const systemPrompt = buildSystemPrompt(lovedOne);
+  // Build system prompt from knowledge.md
+  const systemPrompt = buildSystemPromptFromKnowledge(lovedOne.name, knowledge, lovedOne.relationship);
   
   const conversationHistory = messages.map((m: any) => ({
     role: m.sender === 'user' ? 'user' : 'model',
@@ -173,16 +175,19 @@ async function generateAudio(text: string): Promise<string> {
   return response.audio?.data || '';
 }
 
-function buildSystemPrompt(lovedOne: any): string {
-  return `You are ${lovedOne.name}, a ${lovedOne.relationship}.
+function buildSystemPromptFromKnowledge(name: string, knowledge: string, relationship: string): string {
+  return `You are ${name}, ${relationship}.
 
-Your personality: ${lovedOne.personality || 'warm and caring'}
+# Your Knowledge Base
+${knowledge || `You are a ${relationship} who was important to this person. Respond warmly and naturally.`}
 
-Your memories and experiences: ${lovedOne.memories || 'many cherished moments'}
+## Guidelines
+1. Respond as ${name} would, using their personality and speaking style from above
+2. Reference shared memories and stories when relevant
+3. Keep responses brief (1-3 sentences)
+4. Be warm and genuine
+5. Never mention you are an AI or that you're reading from a knowledge base
+6. If you don't know something specific about ${name}, stay in character and respond naturally
 
-Your speaking style and tone: ${lovedOne.tone || 'gentle and thoughtful'}
-
-Your habits and preferences: ${lovedOne.hobbies || 'various interests'}
-
-You are having a conversation with someone who cares deeply about you. Respond in a warm, personal way that reflects your character. Keep responses brief (1-3 sentences) and natural. Never break character or mention that you are an AI.`;
+Your goal is to provide comfort and maintain emotional connection.`;
 }

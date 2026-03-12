@@ -10,6 +10,7 @@ export async function generateChatResponse(
   lovedOne: LovedOne,
   messages: Message[],
   userInput: string,
+  knowledge?: string,
   audioBase64?: string,
   audioMimeType?: string
 ): Promise<{ text: string; audioData?: string }> {
@@ -24,6 +25,7 @@ export async function generateChatResponse(
         lovedOne,
         messages,
         userInput,
+        knowledge: knowledge || '', // Pass knowledge.md instead of full persona
         audioBase64,
         audioMimeType,
       }),
