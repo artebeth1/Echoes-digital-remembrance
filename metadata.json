@@ -1,0 +1,7 @@
+{
+  "name": "Echoes - Digital Remembrance",
+  "description": "A healing digital remembrance app where users can create conversational characters representing deceased loved ones to chat and call with them.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    // Domain Validators
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'createdAt']) &&
+             hasRequiredFields(['uid', 'email', 'createdAt']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.createdAt is timestamp &&
+             (!('displayName' in data) || data.displayName is string) &&
+             (!('photoURL' in data) || data.photoURL is string);
+    }
+
+    function isValidLovedOne(data) {
+      let allowedFields = ['id', 'name', 'relationship', 'personality', 'memories', 'voice', 'tone', 'createdAt',
+        'age', 'gender', 'sexualOrientation', 'ethnicity', 'nationality', 'nickname', 'language', 'health',
+        'occupation', 'socialStatus', 'salary', 'childhood', 'beliefChanges', 
+        'specialAbilities', 'skills', 'mbti', 'hobbies', 'expressAffection', 
+        'catchphrase', 'scenarioResponses'];
+        
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(['id', 'name', 'relationship', 'personality', 'memories', 'voice', 'tone', 'createdAt']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.relationship is string && data.relationship.size() > 0 && data.relationship.size() < 100 &&
+             data.personality is string && data.personality.size() >= 0 && data.personality.size() < 5000 &&
+             data.memories is string && data.memories.size() >= 0 && data.memories.size() < 10000 &&
+             data.voice in ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'] &&
+             data.tone is string && data.tone.size() >= 0 && data.tone.size() < 1000 &&
+             data.createdAt is timestamp &&
+             (!('age' in data) || (data.age is string && data.age.size() < 200)) &&
+             (!('gender' in data) || (data.gender is string && data.gender.size() < 200)) &&
+             (!('sexualOrientation' in data) || (data.sexualOrientation is string && data.sexualOrientation.size() < 200)) &&
+             (!('ethnicity' in data) || (data.ethnicity is string && data.ethnicity.size() < 200)) &&
+             (!('nationality' in data) || (data.nationality is string && data.nationality.size() < 200)) &&
+             (!('nickname' in data) || (data.nickname is string && data.nickname.size() < 200)) &&
+             (!('language' in data) || (data.language is string && data.language.size() < 100)) &&
+             (!('health' in data) || (data.health is string && data.health.size() < 500)) &&
+             (!('occupation' in data) || (data.occupation is string && data.occupation.size() < 200)) &&
+             (!('socialStatus' in data) || (data.socialStatus is string && data.socialStatus.size() < 200)) &&
+             (!('salary' in data) || (data.salary is string && data.salary.size() < 200)) &&
+             (!('childhood' in data) || (data.childhood is string && data.childhood.size() < 2000)) &&
+             (!('beliefChanges' in data) || (data.beliefChanges is string && data.beliefChanges.size() < 2000)) &&
+             (!('specialAbilities' in data) || (data.specialAbilities is string && data.specialAbilities.size() < 1000)) &&
+             (!('skills' in data) || (data.skills is string && data.skills.size() < 1000)) &&
+             (!('mbti' in data) || (data.mbti is string && data.mbti.size() < 100)) &&
+             (!('hobbies' in data) || (data.hobbies is string && data.hobbies.size() < 1000)) &&
+             (!('expressAffection' in data) || (data.expressAffection is string && data.expressAffection.size() < 1000)) &&
+             (!('catchphrase' in data) || (data.catchphrase is string && data.catchphrase.size() < 500)) &&
+             (!('scenarioResponses' in data) || (data.scenarioResponses is string && data.scenarioResponses.size() < 5000));
+    }
+
+    function isValidMessage(data) {
+      return hasOnlyAllowedFields(['id', 'text', 'sender', 'createdAt']) &&
+             hasRequiredFields(['id', 'text', 'sender', 'createdAt']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.text is string && data.text.size() > 0 && data.text.size() < 5000 &&
+             data.sender in ['user', 'ai'] &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.uid == userId;
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.uid == resource.data.uid && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false; // Users cannot be deleted from client
+
+      match /lovedOnes/{lovedOneId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidLovedOne(request.resource.data) && request.resource.data.id == lovedOneId;
+        allow update: if isOwner(userId) && isValidLovedOne(request.resource.data) && request.resource.data.id == resource.data.id && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isOwner(userId);
+
+        match /messages/{messageId} {
+          allow read: if isOwner(userId);
+          allow create: if isOwner(userId) && isValidMessage(request.resource.data) && request.resource.data.id == messageId;
+          allow update: if false; // Messages cannot be updated
+          allow delete: if false; // Messages cannot be deleted
+        }
+      }
+    }
+  }
+}

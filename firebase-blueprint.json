@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the application.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The user's unique ID." },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "LovedOne": {
+      "title": "Loved One",
+      "description": "A character representing a deceased loved one.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "relationship": { "type": "string" },
+        "personality": { "type": "string" },
+        "memories": { "type": "string" },
+        "voice": { "type": "string", "enum": ["Puck", "Charon", "Kore", "Fenrir", "Zephyr"] },
+        "tone": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "age": { "type": "string" },
+        "gender": { "type": "string" },
+        "sexualOrientation": { "type": "string" },
+        "ethnicity": { "type": "string" },
+        "nationality": { "type": "string" },
+        "health": { "type": "string" },
+        "occupation": { "type": "string" },
+        "socialStatus": { "type": "string" },
+        "salary": { "type": "string" },
+        "childhood": { "type": "string" },
+        "beliefChanges": { "type": "string" },
+        "specialAbilities": { "type": "string" },
+        "skills": { "type": "string" },
+        "mbti": { "type": "string" },
+        "hobbies": { "type": "string" },
+        "expressAffection": { "type": "string" },
+        "catchphrase": { "type": "string" },
+        "scenarioResponses": { "type": "string" }
+      },
+      "required": ["id", "name", "relationship", "personality", "memories", "voice", "tone", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A chat message between the user and the loved one.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string" },
+        "sender": { "type": "string", "enum": ["user", "ai"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "text", "sender", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles."
+    },
+    "/users/{userId}/lovedOnes/{lovedOneId}": {
+      "schema": { "$ref": "#/entities/LovedOne" },
+      "description": "Loved ones created by the user."
+    },
+    "/users/{userId}/lovedOnes/{lovedOneId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Chat messages."
+    }
+  }
+}
