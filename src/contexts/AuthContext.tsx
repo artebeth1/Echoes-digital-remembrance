@@ -1,13 +1,14 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User as FirebaseUser, onAuthStateChanged, signInWithRedirect, getRedirectResult } from 'firebase/auth';
+import { User as FirebaseUser, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, googleProvider } from '../firebase';
+import { auth, db } from '../firebase';
 import { OperationType } from '../types';
 
 interface AuthContextType {
   currentUser: FirebaseUser | null;
   isAuthReady: boolean;
-  login: () => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -27,8 +28,8 @@ async function syncUserToFirestore(user: FirebaseUser) {
       await setDoc(userRef, {
         uid: user.uid,
         email: user.email,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
+        displayName: user.displayName || user.email?.split('@')[0],
+        photoURL: user.photoURL || null,
         createdAt: serverTimestamp()
       });
     }
@@ -42,15 +43,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
-    // Handle redirect result when user returns from Google login
-    getRedirectResult(auth).then(async (result) => {
-      if (result?.user) {
-        await syncUserToFirestore(result.user);
-      }
-    }).catch((error) => {
-      console.error("Redirect result error:", error);
-    });
-
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) await syncUserToFirestore(user);
       setCurrentUser(user);
@@ -60,21 +52,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, []);
 
-  const login = async () => {
+  const signup = async (email: string, password: string) => {
     try {
-      await signInWithRedirect(auth, googleProvider);
-    } catch (error) {
-      console.error("Login failed", error);
-      throw error;
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      await syncUserToFirestore(result.user);
+    } catch (error: any) {
+      console.error("Signup failed:", error);
+      throw new Error(error.message || 'Signup failed');
+    }
+  };
+
+  const login = async (email: string, password: string) => {
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      await syncUserToFirestore(result.user);
+    } catch (error: any) {
+      console.error("Login failed:", error);
+      throw new Error(error.message || 'Login failed');
     }
   };
 
   const logout = async () => {
-    await auth.signOut();
+    await signOut(auth);
   };
 
   return (
-    <AuthContext.Provider value={{ currentUser, isAuthReady, login, logout }}>
+    <AuthContext.Provider value={{ currentUser, isAuthReady, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );
