@@ -1,22 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI } from '@google/genai';
-import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc } from 'firebase/firestore';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-// Initialize Firebase in API route
-const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY,
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID,
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app, 'echoes-storage-bucket');
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -27,29 +12,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { action, ...params } = req.body;
 
     if (action === 'generateChatResponse') {
-      const { userId, lovedOneId, messages, userInput, audioBase64, audioMimeType } = params;
+      // lovedOne is passed as an object from Chat.tsx (already loaded from Firestore)
+      const { lovedOne, messages, userInput, audioBase64, audioMimeType } = params;
       
-      if (!userId || !lovedOneId) {
-        return res.status(400).json({ error: 'Missing userId or lovedOneId' });
+      if (!lovedOne || !lovedOne.name) {
+        return res.status(400).json({ error: 'Missing lovedOne data' });
       }
 
-      try {
-        // Load lovedOne from Knowledge Base
-        const lovedOneRef = doc(db, `users/${userId}/lovedOnes/${lovedOneId}`);
-        const lovedOneSnap = await getDoc(lovedOneRef);
-        
-        if (!lovedOneSnap.exists()) {
-          console.error(`Loved one not found: ${userId}/${lovedOneId}`);
-          return res.status(404).json({ error: 'Loved one not found' });
-        }
-        
-        const lovedOne = lovedOneSnap.data();
-        const response = await generateChatResponse(lovedOne, messages, userInput, audioBase64, audioMimeType);
-        return res.status(200).json(response);
-      } catch (firestoreError: any) {
-        console.error('Firestore error:', firestoreError);
-        return res.status(500).json({ error: `Firestore error: ${firestoreError.message}` });
-      }
+      const response = await generateChatResponse(lovedOne, messages, userInput, audioBase64, audioMimeType);
+      return res.status(200).json(response);
     }
 
     if (action === 'generateNextMemoryQuestion') {
@@ -66,21 +37,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (action === 'playVoiceSample') {
       const { voiceName } = params;
-      // Voice playback is handled client-side, API just needs to acknowledge
+      // Voice playback is handled client-side
       return res.status(200).json({ status: 'ok' });
     }
 
     return res.status(400).json({ error: 'Unknown action' });
   } catch (error: any) {
-    console.error('API error:', {
-      message: error.message,
-      stack: error.stack,
-      code: error.code
-    });
-    return res.status(500).json({ 
-      error: error.message || 'Internal server error',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    console.error('API error:', error.message);
+    return res.status(500).json({ error: error.message || 'Internal server error' });
   }
 }
 
@@ -91,7 +55,7 @@ async function generateChatResponse(
   audioBase64?: string,
   audioMimeType?: string
 ): Promise<{ text: string; audioData?: string }> {
-  // Build system instruction from Knowledge Base (all fields)
+  // Build system instruction from lovedOne data (Knowledge Base)
   const systemInstruction = `
 You are roleplaying as a deceased loved one brought back to life in a digital remembrance app. 
 Your name is ${lovedOne.name}. You are the user's ${lovedOne.relationship}.

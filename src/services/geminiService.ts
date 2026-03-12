@@ -3,12 +3,11 @@ import { LovedOne, Message } from '../types';
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
 
 /**
- * Generate chat response using Knowledge Base
- * API will load lovedOne data from Firestore
+ * Generate chat response using lovedOne data (Knowledge Base)
+ * Chat.tsx loads lovedOne from Firestore, passes it here
  */
 export async function generateChatResponse(
-  userId: string,
-  lovedOneId: string,
+  lovedOne: LovedOne,
   messages: Message[],
   userInput: string,
   audioBase64?: string,
@@ -22,8 +21,7 @@ export async function generateChatResponse(
       },
       body: JSON.stringify({
         action: 'generateChatResponse',
-        userId,
-        lovedOneId,
+        lovedOne,
         messages,
         userInput,
         audioBase64,
