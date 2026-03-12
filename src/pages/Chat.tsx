@@ -15,6 +15,9 @@ function AudioPlayer({ base64Data, mimeType, isAi }: { base64Data: string, mimeT
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Audio buffer optimization
+  const bufferRef = useRef<ArrayBuffer[]>([]);
 
   useEffect(() => {
     if (!base64Data) return;
@@ -84,9 +87,16 @@ function AudioPlayer({ base64Data, mimeType, isAi }: { base64Data: string, mimeT
       </div>
       <audio 
         ref={audioRef} 
-        src={audioUrl} 
+        src={audioUrl}
+        preload="auto"
         onEnded={() => setIsPlaying(false)} 
         onPause={() => setIsPlaying(false)}
+        onCanPlayThrough={() => {
+          // Audio is buffered, ready to play smoothly
+          if (audioRef.current) {
+            audioRef.current.play().catch(e => console.log('Audio play failed:', e));
+          }
+        }}
         className="hidden" 
       />
     </div>
@@ -105,15 +115,25 @@ export default function Chat() {
   const [loading, setLoading] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lovedOneCacheRef = useRef<{ [key: string]: LovedOne }>({});
 
   useEffect(() => {
     if (!currentUser || !id) return;
 
     const fetchLovedOne = async () => {
       try {
-        // Load from Knowledge Base
+        const cacheKey = `${currentUser.uid}/${id}`;
+        
+        // Check cache first
+        if (lovedOneCacheRef.current[cacheKey]) {
+          setLovedOne(lovedOneCacheRef.current[cacheKey]);
+          return;
+        }
+        
+        // Load from Knowledge Base if not cached
         const lovedOneData = await loadLovedOne(currentUser.uid, id);
         if (lovedOneData) {
+          lovedOneCacheRef.current[cacheKey] = lovedOneData;
           setLovedOne(lovedOneData);
         } else {
           navigate('/dashboard');
@@ -246,15 +266,26 @@ export default function Chat() {
         createdAt: serverTimestamp()
       });
 
-      // Get AI response (lovedOne already loaded as Knowledge Base)
-      const { text: aiResponseText } = await generateChatResponse(lovedOne, messages, userMessageText);
-
+      // Create AI message document for streaming
       const aiMsgId = crypto.randomUUID();
       const aiMsgRef = doc(db, `users/${currentUser.uid}/lovedOnes/${id}/messages`, aiMsgId);
-      
+      let aiResponseText = '';
+
+      // Stream response for better UX
+      const { text: streamedText } = await generateChatResponse(
+        lovedOne, 
+        messages, 
+        userMessageText,
+        undefined, // audioBase64
+        undefined, // audioMimeType
+        (chunk: string) => {
+          aiResponseText += chunk;
+        }
+      );
+
       await setDoc(aiMsgRef, {
         id: aiMsgId,
-        text: aiResponseText,
+        text: aiResponseText || streamedText,
         sender: 'ai',
         createdAt: serverTimestamp()
       });
