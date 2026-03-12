@@ -7,6 +7,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { LovedOne, Message, OperationType } from '../types';
 import { handleFirestoreError } from '../utils/firestoreErrorHandler';
 import { generateChatResponse } from '../services/geminiService';
+import { loadLovedOne } from '../services/knowledgeService';
 import { ArrowLeft, Send, Phone, Mic, Square, Play, Pause } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -110,10 +111,10 @@ export default function Chat() {
 
     const fetchLovedOne = async () => {
       try {
-        const docRef = doc(db, `users/${currentUser.uid}/lovedOnes/${id}`);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          setLovedOne(snap.data() as LovedOne);
+        // Load from Knowledge Base
+        const lovedOneData = await loadLovedOne(currentUser.uid, id);
+        if (lovedOneData) {
+          setLovedOne(lovedOneData);
         } else {
           navigate('/dashboard');
         }
