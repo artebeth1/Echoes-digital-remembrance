@@ -7,16 +7,18 @@ import { motion } from 'motion/react';
 import { Globe } from 'lucide-react';
 
 export default function Landing() {
-  const { currentUser, login, signup } = useAuth();
+  const { currentUser, login, signup, resetPassword } = useAuth();
   const { language, setLanguage, t } = useLanguage();
   const navigate = useNavigate();
   
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isSigningUp, setIsSigningUp] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [mode, setMode] = useState<'welcome' | 'login' | 'signup'>('welcome');
+  const [success, setSuccess] = useState('');
+  const [mode, setMode] = useState<'welcome' | 'login' | 'signup' | 'reset'>('welcome');
 
   useEffect(() => {
     if (currentUser) {
@@ -51,6 +53,23 @@ export default function Landing() {
       setError(err.message || 'Signup failed');
     } finally {
       setIsSigningUp(false);
+    }
+  };
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setIsResetting(true);
+    try {
+      await resetPassword(email);
+      setSuccess('Password reset email sent! Check your inbox.');
+      setEmail('');
+      setTimeout(() => setMode('login'), 3000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to send reset email');
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -157,10 +176,66 @@ export default function Landing() {
 
             <button
               type="button"
+              onClick={() => {
+                setMode('reset');
+                setEmail('');
+                setError('');
+              }}
+              className="w-full text-white/70 hover:text-white text-sm transition text-center"
+            >
+              Forgot Password?
+            </button>
+
+            <button
+              type="button"
               onClick={() => setMode('welcome')}
               className="w-full text-white/70 hover:text-white text-sm transition"
             >
               Back
+            </button>
+          </form>
+        ) : mode === 'reset' ? (
+          <form onSubmit={handleReset} className="space-y-6 bg-white/10 backdrop-blur-md p-8 rounded-2xl border border-white/20">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-serif text-white drop-shadow-lg">Reset Password</h2>
+              <p className="text-white/70 text-sm mt-2">Enter your email to receive a password reset link</p>
+            </div>
+
+            {error && (
+              <div className="bg-red-500/20 border border-red-500/50 text-red-100 p-3 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="bg-green-500/20 border border-green-500/50 text-green-100 p-3 rounded-lg text-sm">
+                {success}
+              </div>
+            )}
+
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-stone-300 focus:outline-none focus:border-white/50 transition"
+            />
+
+            <button 
+              type="submit"
+              disabled={isResetting}
+              className="w-full px-6 py-3 bg-white/90 hover:bg-white text-stone-800 rounded-full font-medium transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isResetting ? 'Sending...' : 'Send Reset Link'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMode('login')}
+              className="w-full text-white/70 hover:text-white text-sm transition"
+            >
+              Back to Sign In
             </button>
           </form>
         ) : (
