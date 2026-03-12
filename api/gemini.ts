@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI, Type } from '@google/genai';
+import { buildSystemPromptFromLovedOne } from './knowledgeService';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -12,8 +13,8 @@ export default async function handler(req: any, res: any) {
     const { action, ...params } = req.body;
 
     if (action === 'generateChatResponse') {
-      const { lovedOne, messages, userInput, knowledge, audioBase64, audioMimeType } = params;
-      const response = await generateChatResponse(lovedOne, messages, userInput, knowledge, audioBase64, audioMimeType);
+      const { lovedOne, messages, userInput, audioBase64, audioMimeType } = params;
+      const response = await generateChatResponse(lovedOne, messages, userInput, audioBase64, audioMimeType);
       return res.status(200).json(response);
     }
 
@@ -46,29 +47,43 @@ async function generateChatResponse(
   lovedOne: any,
   messages: any[],
   userInput: string,
-  knowledge: string = '',
   audioBase64?: string,
   audioMimeType?: string
 ): Promise<{ text: string; audioData?: string }> {
-  // Build system prompt from knowledge.md
-  const systemPrompt = buildSystemPromptFromKnowledge(lovedOne.name, knowledge, lovedOne.relationship);
+  // Build system prompt with full LovedOne details (original style)
+  const systemPrompt = buildSystemPromptFromLovedOne(lovedOne);
   
-  const conversationHistory = messages.map((m: any) => ({
-    role: m.sender === 'user' ? 'user' : 'model',
-    parts: [{ text: m.text }],
-  }));
+  const historyText = messages.map((m: any) => `${m.sender === 'user' ? 'User' : lovedOne.name}: ${m.text}`).join('\n');
+  
+  const prompt = historyText 
+    ? `Here is the recent chat history:\n${historyText}\n\nUser: ${userInput}\n${lovedOne.name}:`
+    : userInput;
 
-  conversationHistory.push({
-    role: 'user',
-    parts: [{ text: userInput }],
-  });
+  const contents: any[] = [];
+  if (audioBase64 && audioMimeType) {
+    contents.push({
+      parts: [
+        {
+          inlineData: {
+            data: audioBase64,
+            mimeType: audioMimeType
+          }
+        },
+        { text: prompt }
+      ]
+    });
+  } else {
+    contents.push({
+      parts: [{ text: prompt }]
+    });
+  }
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: conversationHistory,
-    systemInstruction: systemPrompt,
+    model: 'gemini-3.1-pro-preview',
+    contents: contents,
     config: {
-      temperature: 0.8,
+      systemInstruction: systemPrompt,
+      temperature: 0.7,
       maxOutputTokens: 200,
     },
   });
@@ -175,19 +190,4 @@ async function generateAudio(text: string): Promise<string> {
   return response.audio?.data || '';
 }
 
-function buildSystemPromptFromKnowledge(name: string, knowledge: string, relationship: string): string {
-  return `You are ${name}, ${relationship}.
 
-# Your Knowledge Base
-${knowledge || `You are a ${relationship} who was important to this person. Respond warmly and naturally.`}
-
-## Guidelines
-1. Respond as ${name} would, using their personality and speaking style from above
-2. Reference shared memories and stories when relevant
-3. Keep responses brief (1-3 sentences)
-4. Be warm and genuine
-5. Never mention you are an AI or that you're reading from a knowledge base
-6. If you don't know something specific about ${name}, stay in character and respond naturally
-
-Your goal is to provide comfort and maintain emotional connection.`;
-}

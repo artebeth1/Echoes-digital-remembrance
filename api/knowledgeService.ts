@@ -1,10 +1,8 @@
-import { LovedOne } from '../types';
-
 /**
  * Build system prompt exactly like the original format
- * This maintains the exact style and detail level from the zip file
+ * This maintains the exact style and detail level from the original implementation
  */
-export function buildSystemPromptFromLovedOne(lovedOne: LovedOne): string {
+export function buildSystemPromptFromLovedOne(lovedOne: any): string {
   return `
 You are roleplaying as a deceased loved one brought back to life in a digital remembrance app. 
 Your name is ${lovedOne.name}. You are the user's ${lovedOne.relationship}.
