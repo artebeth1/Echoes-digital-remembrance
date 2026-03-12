@@ -5,15 +5,13 @@ const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:
 /**
  * Generate chat response using lovedOne data (Knowledge Base)
  * Chat.tsx loads lovedOne from Firestore, passes it here
- * @param stream - if true, streams response for better UX
  */
 export async function generateChatResponse(
   lovedOne: LovedOne,
   messages: Message[],
   userInput: string,
   audioBase64?: string,
-  audioMimeType?: string,
-  onChunk?: (chunk: string) => void
+  audioMimeType?: string
 ): Promise<{ text: string; audioData?: string }> {
   try {
     const response = await fetch(`${API_BASE}/api/gemini`, {
@@ -28,7 +26,6 @@ export async function generateChatResponse(
         userInput,
         audioBase64,
         audioMimeType,
-        stream: !!onChunk, // Enable streaming if callback provided
       }),
     });
 
@@ -36,44 +33,6 @@ export async function generateChatResponse(
       throw new Error(`API error: ${response.statusText}`);
     }
 
-    // If streaming callback provided, read stream
-    if (onChunk && response.headers.get('content-type')?.includes('text/event-stream')) {
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('Stream not available');
-
-      let fullText = '';
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.type === 'chunk') {
-                onChunk(data.text);
-                fullText += data.text;
-              } else if (data.type === 'done') {
-                return { text: data.fullText || fullText };
-              } else if (data.type === 'error') {
-                throw new Error(data.error);
-              }
-            } catch (e) {
-              console.error('Failed to parse SSE:', e);
-            }
-          }
-        }
-      }
-
-      return { text: fullText };
-    }
-
-    // Standard response
     const data = await response.json();
     return data;
   } catch (error) {

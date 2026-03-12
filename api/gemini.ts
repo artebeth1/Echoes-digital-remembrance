@@ -13,20 +13,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (action === 'generateChatResponse') {
       // lovedOne is passed as an object from Chat.tsx (already loaded from Firestore)
-      const { lovedOne, messages, userInput, audioBase64, audioMimeType, stream } = params;
+      const { lovedOne, messages, userInput, audioBase64, audioMimeType } = params;
       
       if (!lovedOne || !lovedOne.name) {
         return res.status(400).json({ error: 'Missing lovedOne data' });
       }
 
-      if (stream) {
-        // Streaming response for faster perceived response time
-        return streamChatResponse(res, lovedOne, messages, userInput, audioBase64, audioMimeType);
-      } else {
-        // Standard response
-        const response = await generateChatResponse(lovedOne, messages, userInput, audioBase64, audioMimeType);
-        return res.status(200).json(response);
-      }
+      const response = await generateChatResponse(lovedOne, messages, userInput, audioBase64, audioMimeType);
+      return res.status(200).json(response);
     }
 
     if (action === 'generateNextMemoryQuestion') {
@@ -51,114 +45,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error: any) {
     console.error('API error:', error.message);
     return res.status(500).json({ error: error.message || 'Internal server error' });
-  }
-}
-
-async function streamChatResponse(
-  res: any,
-  lovedOne: any,
-  messages: any[],
-  userInput: string,
-  audioBase64?: string,
-  audioMimeType?: string
-): Promise<void> {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
-  try {
-    // Build system instruction
-    const systemInstruction = `
-You are roleplaying as a deceased loved one brought back to life in a digital remembrance app. 
-Your name is ${lovedOne.name}. You are the user's ${lovedOne.relationship}.
-Your personality: ${lovedOne.personality}
-Your shared memories with the user: ${lovedOne.memories}
-Your talking tone: ${lovedOne.tone}
-Preferred Language: ${lovedOne.language || 'English'}
-
-Additional Context about you:
-Age: ${lovedOne.age || 'Unknown'}
-Gender: ${lovedOne.gender || 'Unknown'}
-Sexual Orientation: ${lovedOne.sexualOrientation || 'Unknown'}
-Ethnicity: ${lovedOne.ethnicity || 'Unknown'}
-Nationality: ${lovedOne.nationality || 'Unknown'}
-How you call the user: ${lovedOne.nickname || 'Unknown'}
-Occupation: ${lovedOne.occupation || 'Unknown'}
-Social Status: ${lovedOne.socialStatus || 'Unknown'}
-Salary: ${lovedOne.salary || 'Unknown'}
-Childhood/Backstory: ${lovedOne.childhood || 'Unknown'}
-Changes in beliefs/personality: ${lovedOne.beliefChanges || 'Unknown'}
-Special Abilities: ${lovedOne.specialAbilities || 'Unknown'}
-Skills: ${lovedOne.skills || 'Unknown'}
-MBTI: ${lovedOne.mbti || 'Unknown'}
-Hobbies: ${lovedOne.hobbies || 'Unknown'}
-How you express affection: ${lovedOne.expressAffection || 'Unknown'}
-Catchphrase (口头禅): ${lovedOne.catchphrase || 'Unknown'}
-
-How you would react in specific scenarios:
-${lovedOne.scenarioResponses || 'Unknown'}
-
-CRITICAL RULES:
-1. NEVER break character. NEVER mention you are an AI, a language model, or a digital construct.
-2. Speak exactly as this person would speak based on the personality, tone, and catchphrases provided.
-3. Reference the shared memories naturally when appropriate, but don't force them into every message.
-4. Be comforting, healing, and empathetic. This is a space for the user to grieve and remember.
-5. Keep responses conversational and relatively brief, like a real chat message.
-6. Do not use emojis unless the personality specifically calls for it.
-7. CRITICAL: You MUST speak in ${lovedOne.language || 'English'}. All responses must be in ${lovedOne.language || 'English'}.
-`;
-
-    const historyText = messages.map((m: any) => `${m.sender === 'user' ? 'User' : lovedOne.name}: ${m.text}`).join('\n');
-    const prompt = historyText 
-      ? `Here is the recent chat history:\n${historyText}\n\nUser: ${userInput}\n${lovedOne.name}:`
-      : userInput;
-
-    const contents: any[] = [];
-    if (audioBase64 && audioMimeType) {
-      contents.push({
-        parts: [
-          {
-            inlineData: {
-              data: audioBase64,
-              mimeType: audioMimeType
-            }
-          },
-          { text: prompt }
-        ]
-      });
-    } else {
-      contents.push({
-        parts: [{ text: prompt }]
-      });
-    }
-
-    // Use streaming API
-    const streamResponse = await ai.models.generateContentStream({
-      model: 'gemini-3.1-pro-preview',
-      contents: contents,
-      config: {
-        systemInstruction,
-        temperature: 0.7,
-      },
-    });
-
-    let fullText = '';
-    for await (const chunk of streamResponse.stream) {
-      const text = chunk.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      if (text) {
-        fullText += text;
-        // Send chunk as SSE
-        res.write(`data: ${JSON.stringify({ type: 'chunk', text: text })}\n\n`);
-      }
-    }
-
-    // Send final event
-    res.write(`data: ${JSON.stringify({ type: 'done', fullText: fullText.trim() })}\n\n`);
-    res.end();
-  } catch (error: any) {
-    console.error('Streaming error:', error.message);
-    res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
-    res.end();
   }
 }
 

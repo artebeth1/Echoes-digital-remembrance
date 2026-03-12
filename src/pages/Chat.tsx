@@ -266,26 +266,15 @@ export default function Chat() {
         createdAt: serverTimestamp()
       });
 
-      // Create AI message document for streaming
+      // Get AI response
+      const { text: aiResponseText } = await generateChatResponse(lovedOne, messages, userMessageText);
+
       const aiMsgId = crypto.randomUUID();
       const aiMsgRef = doc(db, `users/${currentUser.uid}/lovedOnes/${id}/messages`, aiMsgId);
-      let aiResponseText = '';
-
-      // Stream response for better UX
-      const { text: streamedText } = await generateChatResponse(
-        lovedOne, 
-        messages, 
-        userMessageText,
-        undefined, // audioBase64
-        undefined, // audioMimeType
-        (chunk: string) => {
-          aiResponseText += chunk;
-        }
-      );
-
+      
       await setDoc(aiMsgRef, {
         id: aiMsgId,
-        text: aiResponseText || streamedText,
+        text: aiResponseText,
         sender: 'ai',
         createdAt: serverTimestamp()
       });
