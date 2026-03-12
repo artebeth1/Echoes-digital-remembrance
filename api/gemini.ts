@@ -64,6 +64,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ suggestions });
     }
 
+    if (action === 'playVoiceSample') {
+      const { voiceName } = params;
+      // Voice playback is handled client-side, API just needs to acknowledge
+      return res.status(200).json({ status: 'ok' });
+    }
+
     return res.status(400).json({ error: 'Unknown action' });
   } catch (error: any) {
     console.error('API error:', {
