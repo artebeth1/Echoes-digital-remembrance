@@ -29,17 +29,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === 'generateChatResponse') {
       const { userId, lovedOneId, messages, userInput, audioBase64, audioMimeType } = params;
       
-      // Load lovedOne from Knowledge Base
-      const lovedOneRef = doc(db, `users/${userId}/lovedOnes/${lovedOneId}`);
-      const lovedOneSnap = await getDoc(lovedOneRef);
-      
-      if (!lovedOneSnap.exists()) {
-        return res.status(404).json({ error: 'Loved one not found' });
+      if (!userId || !lovedOneId) {
+        return res.status(400).json({ error: 'Missing userId or lovedOneId' });
       }
-      
-      const lovedOne = lovedOneSnap.data();
-      const response = await generateChatResponse(lovedOne, messages, userInput, audioBase64, audioMimeType);
-      return res.status(200).json(response);
+
+      try {
+        // Load lovedOne from Knowledge Base
+        const lovedOneRef = doc(db, `users/${userId}/lovedOnes/${lovedOneId}`);
+        const lovedOneSnap = await getDoc(lovedOneRef);
+        
+        if (!lovedOneSnap.exists()) {
+          console.error(`Loved one not found: ${userId}/${lovedOneId}`);
+          return res.status(404).json({ error: 'Loved one not found' });
+        }
+        
+        const lovedOne = lovedOneSnap.data();
+        const response = await generateChatResponse(lovedOne, messages, userInput, audioBase64, audioMimeType);
+        return res.status(200).json(response);
+      } catch (firestoreError: any) {
+        console.error('Firestore error:', firestoreError);
+        return res.status(500).json({ error: `Firestore error: ${firestoreError.message}` });
+      }
     }
 
     if (action === 'generateNextMemoryQuestion') {
@@ -56,8 +66,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(400).json({ error: 'Unknown action' });
   } catch (error: any) {
-    console.error('API error:', error);
-    return res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error('API error:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+    return res.status(500).json({ 
+      error: error.message || 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 }
 
