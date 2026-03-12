@@ -7,6 +7,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { LovedOne, Message, OperationType } from '../types';
 import { handleFirestoreError } from '../utils/firestoreErrorHandler';
 import { generateChatResponse } from '../services/geminiService';
+import { loadKnowledge, saveKnowledge, generateKnowledgeMarkdown } from '../services/knowledgeService';
 import { ArrowLeft, Send, Phone, Mic, Square, Play, Pause } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -103,6 +104,7 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
+  const [knowledge, setKnowledge] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -113,7 +115,23 @@ export default function Chat() {
         const docRef = doc(db, `users/${currentUser.uid}/lovedOnes/${id}`);
         const snap = await getDoc(docRef);
         if (snap.exists()) {
-          setLovedOne(snap.data() as LovedOne);
+          const lovedOneData = snap.data() as LovedOne;
+          setLovedOne(lovedOneData);
+          
+          // Load knowledge.md for this loved one
+          try {
+            const loadedKnowledge = await loadKnowledge(currentUser.uid, id);
+            if (!loadedKnowledge) {
+              // First time: generate and save knowledge.md
+              await saveKnowledge(currentUser.uid, id, lovedOneData);
+              setKnowledge(generateKnowledgeMarkdown(lovedOneData));
+            } else {
+              setKnowledge(loadedKnowledge);
+            }
+          } catch (knowledgeError) {
+            console.warn('Failed to load knowledge:', knowledgeError);
+            // Continue anyway with empty knowledge
+          }
         } else {
           navigate('/dashboard');
         }
@@ -204,6 +222,7 @@ export default function Chat() {
         lovedOne, 
         messages, 
         t('chat.voice_message'),
+        knowledge,
         base64Audio,
         mimeType
       );
@@ -245,8 +264,8 @@ export default function Chat() {
         createdAt: serverTimestamp()
       });
 
-      // Get AI response
-      const { text: aiResponseText } = await generateChatResponse(lovedOne, messages, userMessageText);
+      // Get AI response with knowledge.md
+      const { text: aiResponseText } = await generateChatResponse(lovedOne, messages, userMessageText, knowledge);
 
       const aiMsgId = crypto.randomUUID();
       const aiMsgRef = doc(db, `users/${currentUser.uid}/lovedOnes/${id}/messages`, aiMsgId);
